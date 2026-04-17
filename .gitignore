@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime outputs (keep .gitkeep but ignore actual generated files)
+outputs/*
+!outputs/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Virtualenv
+venv/
+.venv/
+env/
