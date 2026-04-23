@@ -21,7 +21,7 @@ Suggested implementations (choose one):
         GET https://api.duckduckgo.com/?q={query}&format=json
         and return the AbstractText field.
 """
-
+import requests
 from typing import TypedDict
 
 
@@ -45,10 +45,40 @@ def fetch_resource(query: str, max_chars: int = 2000) -> FetchResult:
 
     Raises:
         ValueError: If query is empty.
-
-    TODO (Member 2): Implement the body of this function.
     """
     if not query or not query.strip():
         raise ValueError("query must not be empty")
 
-    raise NotImplementedError("Member 2: implement fetch_resource()")
+    formatted_query = query.replace(" ", "_")
+    url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_query}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            content = data.get("extract","No summary available.")[:max_chars]
+
+            return {
+                "query": query,
+                "source": "Wikipedia API",
+                "content": content,
+                "success": True
+            }
+
+        else:
+            return {
+                "query": query,
+                "source": "Wikipedia API",
+                "content": f"Could not find info for {query}. Status code: {response.status_code}",
+                "success": False
+            }
+    except Exception as e:
+        return {
+            "query": query,
+            "source": "Wikipedia API",
+            "content": f"Error occurred: {str(e)}",
+            "success": False
+
+        }
+        # raise NotImplementedError("Member 2: implement fetch_resource()")

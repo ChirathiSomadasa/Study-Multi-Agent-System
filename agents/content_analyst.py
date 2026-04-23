@@ -1,33 +1,22 @@
-"""
-agents/content_analyst.py — Content Analyst Agent (Member 2)
 
-Responsibilities:
-    1. Read the syllabus produced by the Coordinator.
-    2. For each subtopic, call the fetch_resource tool to gather study material.
-    3. Synthesise all material into well-structured Markdown study notes.
-    4. Write notes to outputs/notes.md.
-    5. Append a trace entry to the shared log.
-
-TODO (Member 2):
-    - Write the SYSTEM_PROMPT for this agent.
-    - Implement the loop that calls fetch_resource() for each subtopic.
-    - Parse and combine the LLM's summarisation output into notes.
-    - Implement tools/fetch_resource.py (see stub there).
-"""
-
+import os
 from typing import Any, Optional, Dict
+from langchain_ollama import ChatOllama
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from state import StudyState
 from logger import AgentLogger
 
+from tools.fetch_resource import fetch_resource
 
-SYSTEM_PROMPT = """TODO (Member 2): Write the system prompt for the Content Analyst agent.
+SYSTEM_PROMPT = """You are an expert Educational Content Analyst. 
+Your task is to take raw study material and convert it into high-quality, structured Markdown study notes.
 
-Guidelines:
-- The agent receives a syllabus JSON and must produce cohesive Markdown notes.
-- Notes must cover each subtopic with a heading, definition, and key points.
-- Use simple language appropriate for the grade level.
-- Respond ONLY with Markdown content — no JSON, no preamble.
+Rules:
+1. Use Grade {grade} level vocabulary.
+2. Structure: Use # for the Main Topic and ## for Subtopics.
+3. Content: For each subtopic, provide a clear definition and bullet points for key concepts.
+4. Output: Respond ONLY with Markdown text. Do not include any preamble, greetings, or JSON.
 """
 
 
@@ -38,6 +27,7 @@ def content_analyst_node(
 ) -> dict[str, Any]:
     """
     Content Analyst agent node. Generates study notes from the syllabus.
+    Utilizes state management to pass data between agents.
 
     Reads from state:  syllabus, grade_level
     Writes to state:   notes, log (appended)
@@ -50,19 +40,63 @@ def content_analyst_node(
     Returns:
         Partial state dict with updated 'notes' and 'log' keys.
 
-    TODO (Member 2): Full implementation below.
     """
     timer = logger.start_timer() if logger else None
     syllabus = state["syllabus"]
+    grade = state.get("grade_level", 10)
+    subtopics = syllabus.get("subtopics", [])
 
     print(f"\n[ContentAnalyst] Generating notes for: {syllabus['topic']}")
 
-    # ── TODO: Implement this node ──────────────────────────────────────────
-    # Suggested steps:
-    # 1. Import and call fetch_resource(query=subtopic) for each subtopic
-    # 2. Build a prompt that asks the LLM to summarise the fetched resources
-    # 3. Parse LLM output as Markdown
-    # 4. Write to outputs/notes.md
-    # 5. Log the trace entry
+    all_fetched_text = ""
 
-    raise NotImplementedError("Member 2: implement content_analyst_node()")
+    for sub in subtopics:
+        print(f"[ContentAnalyst] Fetching content for: {sub}")
+        resource = fetch_resource(query=sub)
+        if resource["success"]:
+            all_fetched_text += f"\n\nSource Material for {sub}:\n{resource['content']}"
+
+    llm = ChatOllama(model=model, temperature=0.3)
+
+    user_prompt = (
+        f"Topic: {syllabus['topic']}\n"
+        f"Subtopics to cover: {', '.join(subtopics)}\n"
+        f"Raw Material: {all_fetched_text}\n\n"
+        "Please generate the Markdown study notes now."
+    )
+
+    response = llm.invoke([
+        SystemMessage(content=SYSTEM_PROMPT.format(grade=grade)),
+        HumanMessage(content=user_prompt),
+    ])
+
+    notes_markdown = response.content.strip()
+
+    out_dir = os.path.join(os.path.dirname(__file__), "..", "outputs")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "notes.md")
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(notes_markdown)
+
+    print(f"[ContentAnalyst] Notes saved → {out_path}")
+
+    entry = None
+    if logger:
+        latency = logger.elapsed_ms(timer)
+        entry = logger.log_entry(
+            agent="content_analyst",
+            input_keys=["syllabus"],
+            tool_calls=["fetch_resource"],
+            output_keys=["notes"],
+            latency_ms=latency,
+            extra={"subtopics_processed": len(subtopics)},
+        )
+
+    new_log = list(state.get("log", []))
+    if entry:
+        new_log.append(entry)
+    else:
+        new_log.append({"agent": "content_analyst", "status": "success"})
+
+    return {"notes": notes_markdown, "log": new_log}
