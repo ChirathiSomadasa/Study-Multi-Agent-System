@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from state import StudyState
 from logger import AgentLogger
 from tools.save_quiz import save_quiz
+from tools.prepare_answer_sheet import prepare_answer_sheet
 
 SYSTEM_PROMPT = """You are a highly analytical educational quiz generator. 
 Your objective is to read the provided study notes and syllabus, then produce a JSON array of quiz questions.
@@ -112,7 +113,15 @@ def quiz_generator_node(
         raise ValueError(f"[QuizGenerator] LLM failed to generate valid questions. Raw: {raw[:200]}")
 
     save_result = save_quiz(questions)
-    print(f"[QuizGenerator] Quiz saved → {save_result['path']} ({save_result['mcq_count']} MCQ, {save_result['open_count']} Open)")
+    answer_result = prepare_answer_sheet(questions, quiz_path=save_result["path"])
+    print(
+        f"[QuizGenerator] Quiz saved → {save_result['path']} "
+        f"({save_result['mcq_count']} MCQ, {save_result['open_count']} Open)"
+    )
+    if answer_result["created"]:
+        print(f"[QuizGenerator] Answer sheet created → {answer_result['path']}")
+    else:
+        print(f"[QuizGenerator] Answer sheet up-to-date → {answer_result['path']}")
 
     entry = None
     if logger:
@@ -120,13 +129,14 @@ def quiz_generator_node(
         entry = logger.log_entry(
             agent="quiz_generator",
             input_keys=["notes", "syllabus"],
-            tool_calls=["save_quiz"],
+            tool_calls=["save_quiz", "prepare_answer_sheet"],
             output_keys=["quiz"],
             latency_ms=latency,
             extra={
                 "total_questions": save_result["question_count"],
                 "mcq_count": save_result["mcq_count"],
-                "open_count": save_result["open_count"]
+                "open_count": save_result["open_count"],
+                "answer_sheet_created": answer_result["created"],
             },
         )
 
