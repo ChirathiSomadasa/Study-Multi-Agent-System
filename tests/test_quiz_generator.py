@@ -127,6 +127,7 @@ class TestQuizGeneratorIntegration(unittest.TestCase):
         entry = result["log"][0]
         self.assertEqual(entry["agent"], "quiz_generator")
         self.assertIn("save_quiz", entry["tool_calls"])
+        self.assertIn("prepare_answer_sheet", entry["tool_calls"])
 
 class TestQuizGeneratorLLMJudge(unittest.TestCase):
 
